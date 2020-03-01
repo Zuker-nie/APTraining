@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+<!-- Load TensorFlow.js -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.2"></script>
+<!-- Load BodyPix -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix@2.0"></script>
+
+<meta charset="utf-8">
+<title>AP Trainer</title>
+
+<style>
+#container {
+	margin: auto;
+	width: 500px;
+	height: 375px;
+	border: 10px #333 solid;
+}
+#videoElement {
+	width: 500px;
+	height: 375px;
+	background-color: #666;
+  transform: rotateY(180deg); 
+}
+</style>
+</head>
+
+<body>
+<h2 style="color:white;" id = "frames">FrameRate: </h2>
+<div id="container">
+  <video autoplay="true" id="videoElement"></video>
+  <canvas id="canvas" width="640" height ="480"></canvas>
+  <p style="color:white; text-align:center; "  >
+    <font id="feedback" size="6">________________</font>
+  </p>
+  <p style="color:white; text-align:center;" >
+    <font id="reps" size="6">Reps: 0</font>
+    </p>
+</div>
+<audio src="" id="speech" hidden></audio>
+<script>
+//sets background design
+document.body.style.background = "url('BackgroundImg.png') ";
+document.body.style.backgroundColor = "#737373";
+
+var video = document.querySelector("#videoElement");
+var canvas = document.getElementById('canvas');
+canvas.style.display = "none";
+var context = canvas.getContext('2d');
+var frames = 0;
+var reps = 0;
+var lastPosition = 1;
+var yl, yr = 0; //left and right wrist y values
+
+if (navigator.mediaDevices.getUserMedia) {
+  navigator.mediaDevices.getUserMedia({ video: true })
+    .then(function (stream) {
+      video.srcObject = stream;
+    })
+    .catch(function (err0r) {
+      console.log("Something went wrong!");
+    });
+}
+
+var interval = setInterval(function(){
+  context.drawImage(video,0,0,640,480);
+  frames++;
+  const img = new Image();
+  img.src = canvas.toDataURL('image/jpeg',0.5);
+  async function loadAndPredict() {
+      const net = await bodyPix.load({architecture: 'MobileNetV1', outputStride: 16, multiplier: 0.75, quantBytes: 2 });         
+      const segmentation = await net.segmentPerson(img);
+      overHead(segmentation); 
+    }
+  loadAndPredict();
+    
+  },400);
+
+  setInterval(function(){
+    var header = document.getElementById("frames");
+    header.innerHTML = "FrameRate: " + frames;
+    frames = 0;
+  }, 1000);
+
+  //setTimeout(function(){clearInterval(interval)},20000);
+
+  function overHead(segmentation){
+    
+    if(segmentation.allPoses.length > 0){
+        var current = segmentation.allPoses[0];
+        yl = current.keypoints[10].position.y;
+        yr = current.keypoints[9].position.y;
+        if(current.keypoints[9].score >= 0.50 && current.keypoints[10].score >= 0.50){
+            if(Math.abs(yr - yl) > 30){
+                if(yr > yl){
+                  if(document.getElementById("feedback").innerHTML != "Right Wrist too high"){
+                      speak("Right Wrist too high");
+                    }
+                    document.getElementById("feedback").innerHTML = "Right Wrist too high";
+                } else {
+                    if(document.getElementById("feedback").innerHTML != "Left Wrist too high"){
+                      speak("Left Wrist too high");
+                    }
+                    document.getElementById("feedback").innerHTML = "Left Wrist too high";   
+                }
+            } else {
+                document.getElementById("feedback").innerHTML = "Wrist Balanced";  
+            }
+        } 
+        UpdateDirection(current.keypoints[0].position.y,yl,yr);
+        //console.log(segmentation.allPoses);
+    }
+  }
+
+  function UpdateDirection(ynose,yl,yr){
+    var repSource = document.getElementById("reps");
+    //var currentHeight = (yl + yr)/ 2;
+    
+    var currentPosition;
+    //console.log("Current P: " + currentPosition + " Last P: " + lastPosition);
+    if(yl > ynose && yr > ynose){
+        currentPosition = 1;
+    } else{
+        currentPosition  = 0;
+    }
+
+    if (currentPosition  != lastPosition ){
+        reps++;
+        repSource.innerHTML = "Reps: " + Math.round(reps/2);
+    }
+    lastPosition = currentPosition ;
+  }
+ 
+
+function speak(text){
+  //text = encodeURIComponent(text);
+  var url = "";
+  if (text == "Left Wrist too high"){
+    url = "http://translate.google.com.vn/translate_tts?ie=UTF-8&q=";
+  } else {
+    url = "https://translate.google.com.vn/translate_tts?ie=UTF-8&q=";
+  }
+  
+  url += text + "&tl=en&client=tw-ob";
+  var audio = document.getElementById("speech");
+  audio.src = url;
+  audio.play();
+}
+
+</script>
+</body>
+</html>
